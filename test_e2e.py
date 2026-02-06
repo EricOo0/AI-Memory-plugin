@@ -146,6 +146,13 @@ def interactive_mode(manager: MemoryManager, agent):
     """交互模式"""
     print("\n进入交互模式（输入 'quit' 退出）...")
     print("=" * 60)
+    print("提示: 你可以让 Agent 添加记忆（说'记住：...'）")
+    print("      或者直接搜索记忆内容")
+    print("=" * 60)
+
+    # 添加记忆的关键词
+    memory_keywords = ["记住", "添加", "保存", "存", "记录", "note", "memo",
+                      "save", "write", "添加记忆", "记住这件事", "记下来"]
 
     while True:
         try:
@@ -154,6 +161,28 @@ def interactive_mode(manager: MemoryManager, agent):
                 print("退出交互模式")
                 break
 
+            # 检查是否是添加记忆的请求
+            is_memory_request = False
+            content_to_save = None
+
+            for keyword in memory_keywords:
+                if keyword in user_input:
+                    is_memory_request = True
+                    # 提取要记录的内容
+                    idx = user_input.index(keyword)
+                    content_to_save = user_input[idx + len(keyword):].strip()
+                    break
+
+            if is_memory_request and content_to_save:
+                # 直接添加记忆（不通过 Agent）
+                print(f"\n正在保存记忆: {content_to_save[:50]}...")
+                path = manager.add_memory(content_to_save)
+                manager.sync()
+                print(f"✓ 记忆已保存到: {path}")
+                print(f"  已同步到向量存储")
+                continue
+
+            # 正常查询
             print(f"\n正在查询: {user_input}")
             result = agent.invoke({"input": user_input})
             print(f"\nAgent: {result['output']}")
