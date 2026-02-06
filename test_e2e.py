@@ -7,6 +7,9 @@
 
 或者使用 ChromaDB:
     python test_e2e.py --model gpt-4 --api-key YOUR_API_KEY --use-chroma
+
+使用自定义 API 端点:
+    python test_e2e.py --api-url https://api.example.com/v1 --api-key YOUR_API_KEY
 """
 
 import argparse
@@ -21,6 +24,7 @@ try:
     from langchain.agents import AgentExecutor, create_openai_functions_agent
     from langchain_openai import ChatOpenAI
     from langchain.tools import StructuredTool
+    from langchain_community.chat_models import ChatOpenAI as CustomChatOpenAI
     from pydantic import BaseModel, Field
     LANGCHAIN_AVAILABLE = True
 except ImportError as e:
@@ -34,8 +38,10 @@ from adapters.langchain import get_langchain_tools
 
 class TestConfig(BaseModel):
     """测试配置"""
-    model: str = Field(default="gpt-3.5-turbo", description="OpenAI 模型名称")
-    api_key: str = Field(default="", description="OpenAI API Key (或设置 OPENAI_API_KEY 环境变量)")
+    model: str = Field(default="gpt-3.5-turbo", description="模型名称")
+    api_key: str = Field(default="", description="API Key (或设置 OPENAI_API_KEY 环境变量)")
+    api_url: str = Field(default="", description="自定义 API URL（可选，留空使用默认）")
+    api_base: str = Field(default="", description="API Base URL（可选，留空使用默认）")
     use_chroma: bool = Field(default=False, description="使用 ChromaDB 后端")
     chroma_dir: str = Field(default="./test_chroma_data", description="ChromaDB 数据目录")
     memory_dir: str = Field(default="./test_memory", description="记忆目录")
@@ -162,9 +168,13 @@ def interactive_mode(manager: MemoryManager, agent):
 def main():
     parser = argparse.ArgumentParser(description="AI Memory Plugin 端到端测试")
     parser.add_argument("--model", type=str, default="gpt-3.5-turbo",
-                      help="OpenAI 模型名称")
+                      help="模型名称（如: gpt-4, claude-3-opus）")
     parser.add_argument("--api-key", type=str, default="",
-                      help="OpenAI API Key (或设置 OPENAI_API_KEY 环境变量)")
+                      help="API Key (或设置 OPENAI_API_KEY 环境变量)")
+    parser.add_argument("--api-url", type=str, default="",
+                      help="自定义 API URL（如: https://api.example.com/v1）")
+    parser.add_argument("--api-base", type=str, default="",
+                      help="API Base URL（如: https://api.example.com）")
     parser.add_argument("--use-chroma", action="store_true",
                       help="使用 ChromaDB 后端")
     parser.add_argument("--chroma-dir", type=str, default="./test_chroma_data",
@@ -190,15 +200,25 @@ def main():
         chroma_dir=args.chroma_dir
     )
 
-    # 创建 LangChain Agent
-    print("\n初始化 LangChain Agent...")
+    # 创建 LLM 实例（支持自定义 API）
+    print("\n初始化 LLM...")
     print(f"  模型: {args.model}")
 
-    llm = ChatOpenAI(
-        model=args.model,
-        api_key=api_key,
-        temperature=0.7
-    )
+    # 检查是否使用自定义 API
+    if args.api_url or args.api_base:
+        print(f"  自定义 API: {args.api_url or args.api_base}")
+        llm = CustomChatOpenAI(
+            model=args.model,
+            api_key=api_key,
+            temperature=0.7,
+            base_url=args.api_url if args.api_url else args.api_base
+        )
+    else:
+        llm = ChatOpenAI(
+            model=args.model,
+            api_key=api_key,
+            temperature=0.7
+        )
 
     tools = get_langchain_tools(manager)
     print(f"  工具: {[tool.name for tool in tools]}")
