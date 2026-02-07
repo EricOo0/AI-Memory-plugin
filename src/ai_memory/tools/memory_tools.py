@@ -15,7 +15,7 @@ class MemoryTools:
         self,
         query: str,
         max_results: int = 6,
-        min_score: float = 0.35
+        min_score: float = 0.2
     ) -> Dict[str, Any]:
         """搜索记忆"""
         results = self.manager.search(query, max_results, min_score)
