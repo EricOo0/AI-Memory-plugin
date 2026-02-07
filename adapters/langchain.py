@@ -49,10 +49,7 @@ class LangChainMemoryTool(BaseTool):
     name: str = "memory_search"
     description: str = "Search memories for relevant information about past work, decisions, user preferences, or project history"
     args_schema: type[BaseModel] = MemorySearchSchema
-
-    def __init__(self, manager: MemoryManager):
-        super().__init__()
-        self.manager = manager
+    manager: MemoryManager = Field(exclude=True)
 
     def _run(self, query: str, max_results: int = 6, min_score: float = 0.35) -> str:
         results = self.manager.search(query, max_results, min_score)
@@ -70,7 +67,7 @@ def get_langchain_tools(manager: MemoryManager) -> List[BaseTool]:
         )
 
     return [
-        LangChainMemoryTool(manager),
+        LangChainMemoryTool(manager=manager),
         StructuredTool.from_function(
             func=lambda content, tags: manager.add_memory(content, tags.split(",") if tags else None),
             name="memory_add",
@@ -84,3 +81,62 @@ def get_langchain_tools(manager: MemoryManager) -> List[BaseTool]:
             args_schema=MemoryGetSchema
         )
     ]
+
+def get_langchain_tools_raw(manager: MemoryManager):
+    """获取原始函数用于自定义 API（绕过 LangChain 工具序列化问题）"""
+    from langchain_core.tools import BaseTool
+    from pydantic import BaseModel, Field
+
+    class MemorySearchSchema(BaseModel):
+        query: str = Field(description="Search query for semantic search")
+        max_results: int = Field(default=6, description="Maximum number of results")
+        min_score: float = Field(default=0.35, description="Minimum relevance score (0-1)")
+
+    class MemoryAddSchema(BaseModel):
+        content: str = Field(description="Content to remember")
+        tags: str = Field(default="", description="Comma-separated tags")
+
+    class MemoryGetSchema(BaseModel):
+        path: str = Field(description="File path")
+        from_line: int = Field(default=None, description="Starting line number")
+        lines: int = Field(default=20, description="Number of lines to retrieve")
+
+    # 使用继承方式创建工具，避免 lambda 序列化问题
+    class MemorySearchTool(BaseTool):
+        name = "memory_search"
+        description = "Search memories for relevant information about past work, decisions, user preferences, or project history"
+        args_schema = MemorySearchSchema
+        manager = None
+
+        def _run(self, query: str, max_results: int = 6, min_score: float = 0.35) -> str:
+            results = self.manager.search(query, max_results, min_score)
+            output = f"Found {len(results)} memories:\n\n"
+            for r in results:
+                output += f"- {r.citation} (score: {r.score:.2f})\n  {r.snippet[:200]}...\n\n"
+            return output
+
+    class MemoryAddTool(BaseTool):
+        name = "memory_add"
+        description = "Add a new memory entry"
+        args_schema = MemoryAddSchema
+        manager = None
+
+        def _run(self, content: str, tags: str = "") -> str:
+            self.manager.add_memory(content, tags.split(",") if tags else None)
+            return f"Memory saved successfully"
+
+    class MemoryGetTool(BaseTool):
+        name = "memory_get"
+        description = "Retrieve specific lines from a memory file"
+        args_schema = MemoryGetSchema
+        manager = None
+
+        def _run(self, path: str, from_line: int = None, lines: int = 20) -> str:
+            return self.manager.get_memory(path, from_line, lines)
+
+    # 设置 manager 并返回工具
+    MemorySearchTool.manager = manager
+    MemoryAddTool.manager = manager
+    MemoryGetTool.manager = manager
+
+    return [MemorySearchTool(), MemoryAddTool(), MemoryGetTool()]

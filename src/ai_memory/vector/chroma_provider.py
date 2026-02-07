@@ -29,33 +29,37 @@ class ChromaVectorStore(VectorStore):
 
     def _create_client(self):
         """创建 ChromaDB 客户端"""
-        if "chroma_host" in self.config and "chroma_port" in self.config:
-            # 远程服务器
-            return chromadb.Client(
+        if self.config.get("chroma_host"):
+            # 远程服务器（新版 ChromaDB 使用 HttpClient）
+            # 默认端口 18432（避免与常用端口冲突）
+            port = self.config.get("chroma_port", 18432)
+            logger.info(f"ChromaDB 远程模式: {self.config['chroma_host']}:{port}")
+            return chromadb.HttpClient(
                 host=self.config["chroma_host"],
-                port=self.config["chroma_port"]
+                port=port
             )
         elif "chroma_persist_dir" in self.config:
-            # 本地持久化
-            return chromadb.Client(
-                Settings(
-                    chroma_db_impl="duckdb+parquet",
-                    persist_directory=str(self.config["chroma_persist_dir"])
-                )
-            )
+            # 本地持久化（新版 ChromaDB 使用 PersistentClient）
+            logger.info(f"ChromaDB 本地持久化模式: {self.config['chroma_persist_dir']}")
+            return chromadb.PersistentClient(path=str(self.config["chroma_persist_dir"]))
         else:
             # 内存模式
-            return chromadb.Client(Settings(anonymized_telemetry=False))
+            logger.info("ChromaDB 内存模式")
+            return chromadb.Client()
 
     def _get_or_create_collection(self):
         """获取或创建集合"""
         try:
-            return self.client.get_collection(self.collection_name)
+            collection = self.client.get_collection(self.collection_name)
+            logger.info(f"使用已有集合: {self.collection_name}")
+            return collection
         except Exception:
-            return self.client.create_collection(
+            collection = self.client.create_collection(
                 name=self.collection_name,
                 metadata={"description": "AI Memory Chunks"}
             )
+            logger.info(f"创建新集合: {self.collection_name}")
+            return collection
 
     def add(
         self,
@@ -66,12 +70,14 @@ class ChromaVectorStore(VectorStore):
     ) -> None:
         """添加向量"""
         try:
+            logger.debug(f"ChromaDB 添加 {len(ids)} 个向量")
             self.collection.add(
                 ids=ids,
                 embeddings=embeddings,
                 documents=documents,
                 metadatas=metadatas
             )
+            logger.debug(f"ChromaDB 添加完成")
         except Exception as e:
             logger.error(f"添加向量失败: {e}")
             raise
@@ -84,6 +90,7 @@ class ChromaVectorStore(VectorStore):
     ) -> List[VectorSearchResult]:
         """向量搜索（使用 HNSW 索引）"""
         try:
+            logger.debug(f"ChromaDB 搜索: n_results={n_results}, where={where}")
             results = self.collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
@@ -99,7 +106,7 @@ class ChromaVectorStore(VectorStore):
                         metadata=results["metadatas"][0][i]
                     )
                 )
-
+            logger.debug(f"ChromaDB 返回 {len(vector_results)} 个结果")
             return vector_results
         except Exception as e:
             logger.error(f"向量搜索失败: {e}")

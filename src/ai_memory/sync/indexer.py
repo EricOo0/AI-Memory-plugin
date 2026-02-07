@@ -1,5 +1,6 @@
 """记忆索引器"""
 
+import logging
 from typing import List, Tuple, Optional
 from pathlib import Path
 
@@ -7,6 +8,8 @@ from ai_memory.storage.database import Database
 from ai_memory.storage.file_manager import FileManager
 from ai_memory.embeddings.base import EmbeddingProvider
 from ai_memory.vector.base import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryIndexer:
@@ -31,15 +34,25 @@ class MemoryIndexer:
     def sync(self) -> None:
         """同步文件到数据库"""
         files = self.fm.get_memory_files()
+        logger.debug(f"同步 {len(files)} 个文件")
         for file_path in files:
             self._sync_file(file_path)
 
     def _sync_file(self, file_path: Path) -> None:
         """同步单个文件"""
-        relative_path = file_path.relative_to(self.fm.base_dir).as_posix()
+        try:
+            relative_path = file_path.relative_to(self.fm.base_dir).as_posix()
+        except ValueError:
+            # 如果文件不在 base_dir 下，可能是绝对路径
+            logger.debug(f"文件路径解析异常: {file_path}, base_dir={self.fm.base_dir}")
+            relative_path = file_path.name
 
         # 获取当前文件状态
-        current_entry = self.fm.get_file_entry(relative_path)
+        try:
+            current_entry = self.fm.get_file_entry(relative_path)
+        except FileNotFoundError:
+            logger.warning(f"文件不存在，跳过: {relative_path}")
+            return
         existing = self.db.get_file(relative_path)
 
         # 检查是否需要更新

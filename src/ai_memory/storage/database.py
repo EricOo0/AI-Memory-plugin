@@ -19,7 +19,10 @@ class Database:
     def connect(self) -> sqlite3.Connection:
         """创建数据库连接"""
         if self.conn is None:
-            self.conn = sqlite3.connect(str(self.db_path))
+            self.conn = sqlite3.connect(
+                str(self.db_path),
+                check_same_thread=False  # 允许跨线程访问（需注意并发安全）
+            )
             self.conn.row_factory = sqlite3.Row
             # 启用 WAL 模式
             self.conn.execute("PRAGMA journal_mode=WAL")
@@ -164,13 +167,16 @@ class Database:
         conn = self.connect()
         cursor = conn.cursor()
 
+        # 转义 FTS5 查询中的特殊字符
+        safe_query = self._escape_fts_query(query)
+
         cursor.execute("""
             SELECT id, path, start_line, end_line, text, rank
             FROM fts_chunks
             WHERE fts_chunks MATCH ?
             ORDER BY rank
             LIMIT ?
-        """, (query, limit))
+        """, (safe_query, limit))
 
         rows = cursor.fetchall()
         return [
@@ -180,10 +186,50 @@ class Database:
                 "start_line": row["start_line"],
                 "end_line": row["end_line"],
                 "text": row["text"],
-                "score": 1.0 / (1.0 + row["rank"])  # BM25 转分数
+                "score": 1.0 / (1.0 + abs(row["rank"]))  # BM25 rank 在 FTS5 中为负值
             }
             for row in rows
         ]
+
+    def get(self, ids: List[str]) -> List[Dict]:
+        """获取向量"""
+        results = []
+        for id_ in ids:
+            # 解析 chunk_id: "path:start-end"
+            parts = id_.split(":")
+            if len(parts) >= 2:
+                path = parts[0]
+                # parts[1] 格式是 "start-end"
+                line_parts = parts[1].split("-")
+                if len(line_parts) >= 1:
+                    start = int(line_parts[0])
+
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, path, start_line, end_line, text, embedding, model
+                FROM chunks
+                WHERE path = ? AND start_line = ?
+            """, (path, start))
+            row = cursor.fetchone()
+            if row:
+                results.append({
+                    "id": id_,
+                    "path": path,
+                    "start_line": row["start_line"],
+                    "end_line": row["end_line"],
+                    "text": row["text"],
+                    "embedding": json.loads(row["embedding"]),
+                    "model": row["model"]
+                })
+        return results
+
+    def _escape_fts_query(self, query: str) -> str:
+        """转义 FTS5 查询特殊字符"""
+        # FTS5 特殊字符: " ' * ( ) [ ] { }
+        # 将查询用双引号包裹，并进行转义
+        escaped = query.replace('"', '""')
+        return f'"{escaped}"'
 
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
         """计算余弦相似度"""

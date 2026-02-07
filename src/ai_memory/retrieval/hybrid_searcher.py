@@ -61,15 +61,47 @@ class HybridSearcher:
                     query_embedding,
                     n_results=max_results * 2
                 )
-                vector_results = [
-                    {
-                        "path": r.metadata["path"],
-                        "start_line": r.metadata["start_line"],
-                        "end_line": r.metadata["end_line"],
-                        "vector_score": r.score
-                    }
-                    for r in vector_search_results
-                ]
+                # ChromaDB 返回的结果包含 documents，需要提取
+                # 格式可能是 VectorSearchResult 或其他格式
+                for r in vector_search_results:
+                    path = None
+                    start_line = None
+                    end_line = None
+                    vector_score = 0  # 默认值
+                    text = ""
+
+                    # 尝试获取 score
+                    if hasattr(r, "score"):
+                        vector_score = r.score
+
+                    if hasattr(r, "metadata"):
+                        path = r.metadata.get("path")
+                        start_line = r.metadata.get("start_line")
+                        end_line = r.metadata.get("end_line")
+                    elif isinstance(r, dict):
+                        path = r.get("path")
+                        start_line = r.get("start_line")
+                        end_line = r.get("end_line")
+                        vector_score = r.get("score", 0)
+
+                    # 获取文本
+                    if path and start_line is not None and end_line is not None:
+                        chunk_id = f"{path}:{start_line}-{end_line}"
+                        # 从数据库获取文本
+                        try:
+                            chunk_data = self.db.get([chunk_id])
+                            if chunk_data and len(chunk_data) > 0:
+                                text = chunk_data[0].get("text", "")
+                        except Exception:
+                            text = ""
+
+                    vector_results.append({
+                        "path": path or "",
+                        "start_line": start_line or 0,
+                        "end_line": end_line or 0,
+                        "vector_score": vector_score,
+                        "text": text
+                    })
             except Exception as e:
                 logger.error(f"向量搜索失败: {e}")
 
@@ -111,16 +143,26 @@ class HybridSearcher:
                      list(zip(vector_results, ["vector"] * len(vector_results)))
 
         for result, source in all_results:
+            # 确保所有必需字段存在
+            if "path" not in result:
+                logger.debug(f"跳过无 path 的结果: {result}")
+                continue
+
             key = f"{result['path']}#{result['start_line']}-{result['end_line']}"
             if key not in merged:
+                # 向量结果可能没有 text 字段，设置为空字符串
                 merged[key] = {
                     "path": result["path"],
                     "start_line": result["start_line"],
                     "end_line": result["end_line"],
-                    "text": result["text"],
+                    "text": result.get("text", ""),  # 安全访问
                     "text_score": 0,
                     "vector_score": 0
                 }
-            merged[key][f"{source}_score"] = result["score"]
+            # 安全访问 score（向量结果使用 vector_score 键）
+            if source == "vector" and "vector_score" in result:
+                merged[key]["vector_score"] = result["vector_score"]
+            elif "score" in result:
+                merged[key][f"{source}_score"] = result["score"]
 
         return list(merged.values())

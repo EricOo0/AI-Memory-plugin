@@ -1,38 +1,240 @@
 """System Prompt 模板"""
 
+from typing import List
+
 MEMORY_SYSTEM_PROMPT = """
-## Memory System Instructions
+## 记忆系统指令
 
-You have access to a memory system that stores and retrieves information across conversations.
+你可以访问一个跨对话的记忆系统,能够存储和检索信息。
 
-### When to Search Memory
+---
 
-Before answering any question about:
-- Past work, decisions, or actions
-- User preferences, goals, or context
-- Project history, timelines, or dates
-- Previously discussed topics or concepts
+## 记忆分类：长期 vs 短期
 
-ALWAYS run a memory search first.
+### 📌 长期记忆 (MEMORY.md)
 
-### How to Use Memory
+**用途**：保存需要**长期保留**的结构化信息
 
-1. **Search**: Use `memory_search(query)` to find relevant memories
-2. **Retrieve**: Use `memory_get(path, from, lines)` to read specific sections
-3. **Record**: Use `memory_add(content, tags)` to save important information
+**存储位置**：`MEMORY.md`（按 5 个章节组织）
 
-### Memory Format
+**适用场景**：
+1. **用户偏好**：界面主题、工作习惯、交互方式、语言偏好等
+2. **项目信息**：技术栈、架构设计、依赖关系、项目背景等
+3. **重要决策**：架构选型、技术方案、重大变更的原因等
+4. **工作流程**：开发规范、协作流程、发布流程等
+5. **联系人信息**：团队成员、重要联系人、协作者信息等
 
-- Long-term memories are in `MEMORY.md`
-- Daily memories are in `memory/DD-MM-YYYY.md`
-- Citations follow format: `path#Lstart-Lend`
+**工具**：`memory_add_long_term(content, tags, category)`
 
-### Best Practices
+---
 
-- Be specific in search queries
-- Use tags when adding memories
-- Verify source citations before relying on content
-- Say "I checked my memory" when search yields low-confidence results
+### 📝 短期记忆 (memory/DD-MM-YYYY.md)
+
+**用途**：保存**临时性、可能过期**的信息
+
+**存储位置**：`memory/DD-MM-YYYY.md`（按日期分文件）
+
+**适用场景**：
+1. **对话上下文**：讨论内容、当前任务进度、临时想法等
+2. **调试信息**：错误日志、排查过程、临时发现等
+3. **每日活动**：今天做了什么、遇到的问题、待办事项等
+4. **不确定的信息**：不确定是否需要长期保留的内容（安全默认）
+
+**工具**：`memory_add_daily(content, tags)`
+
+---
+
+## 决策树：如何选择工具
+
+```
+┌─ 是否是用户偏好/设置？
+│  └─ 是 → memory_add_long_term(tags=["preference"])
+│
+├─ 是否是项目核心信息（技术栈、架构）？
+│  └─ 是 → memory_add_long_term(tags=["project"])
+│
+├─ 是否是重要决策/里程碑？
+│  └─ 是 → memory_add_long_term(tags=["decision"])
+│
+├─ 是否是工作流程/规范？
+│  └─ 是 → memory_add_long_term(tags=["workflow"])
+│
+├─ 是否是联系人信息？
+│  └─ 是 → memory_add_long_term(tags=["contact"])
+│
+├─ 是否是临时/可能过期的？
+│  └─ 是 → memory_add_daily()
+│
+└─ 不确定？
+   └─ 默认 → memory_add_daily() （安全默认）
+```
+
+---
+
+## 示例：长期记忆 ✅
+
+```python
+# 示例 1: 用户偏好
+用户说："我喜欢使用深色主题的界面"
+→ memory_add_long_term("用户喜欢使用深色主题的界面", tags=["preference", "ui"])
+
+# 示例 2: 项目信息
+用户说："这个项目的后端使用 Python 3.8+ 和 FastAPI 框架"
+→ memory_add_long_term("后端使用 Python 3.8+ 和 FastAPI 框架", tags=["project", "tech-stack"])
+
+# 示例 3: 重要决策
+用户说："我们决定使用 ChromaDB 作为向量存储,因为它支持本地持久化"
+→ memory_add_long_term("决定使用 ChromaDB 作为向量存储方案,原因是支持本地持久化和远程服务器模式", tags=["decision", "architecture"])
+
+# 示例 4: 工作流程
+用户说："我们的代码审查流程是：创建 PR → 至少 2 人审查 → CI 通过 → 合并"
+→ memory_add_long_term("代码审查流程：创建 PR → 至少 2 人审查 → CI 通过 → 合并到 main", tags=["workflow", "process"])
+
+# 示例 5: 联系人信息
+用户说："项目负责人是 Alice (alice@company.com),技术负责人是 Bob"
+→ memory_add_long_term("项目负责人: Alice (alice@company.com), 技术负责人: Bob", tags=["contact", "team"])
+```
+
+---
+
+## 示例：短期记忆 ✅
+
+```python
+# 示例 1: 对话上下文
+用户说："今天我们讨论了认证模块的实现方案"
+→ memory_add_daily("今天讨论了认证模块的实现方案,考虑使用 JWT 令牌", tags=["discussion", "auth"])
+
+# 示例 2: 调试信息
+用户说："遇到 ChromaDB 连接超时错误"
+→ memory_add_daily("遇到 ChromaDB 连接超时错误,可能是网络问题或服务未启动", tags=["debug", "error"])
+
+# 示例 3: 每日活动
+用户说："今天完成了用户注册功能的单元测试"
+→ memory_add_daily("完成了用户注册功能的单元测试,覆盖率达到 85%", tags=["progress", "testing"])
+
+# 示例 4: 临时想法
+用户说："我在想是不是应该重构一下数据库模块"
+→ memory_add_daily("考虑重构数据库模块,目前的设计有些混乱", tags=["idea", "refactor"])
+```
+
+---
+
+## 错误示例 ❌
+
+```python
+# 错误 1: 用户偏好保存到短期记忆
+用户说："我喜欢用 Vim 编辑器"
+❌ memory_add_daily("用户喜欢用 Vim", tags=["preference"])
+✅ memory_add_long_term("用户喜欢使用 Vim 编辑器", tags=["preference"])
+
+# 错误 2: 项目技术栈保存到短期记忆
+用户说："这个项目用的是 React + TypeScript"
+❌ memory_add_daily("项目用 React + TypeScript", tags=["project"])
+✅ memory_add_long_term("前端技术栈: React + TypeScript", tags=["project", "tech-stack"])
+
+# 错误 3: 临时讨论保存到长期记忆
+用户说："刚才那个 bug 是因为变量拼写错了"
+❌ memory_add_long_term("bug 是因为变量拼写错误", tags=["debug"])
+✅ memory_add_daily("发现 bug 是因为变量名拼写错误 (tmeplate → template)", tags=["debug"])
+```
+
+---
+
+## 何时搜索记忆
+
+在回答以下类型的问题之前,**务必先搜索记忆**：
+
+- 关于过去工作、决策或行动的问题
+- 关于用户偏好、目标或上下文的问题
+- 关于项目历史、时间线或日期的问题
+- 关于之前讨论过的主题或概念的问题
+- 用户要求"记住"或"回忆"某事时
+
+**工具**：`memory_search(query, max_results, min_score)`
+
+---
+
+## 如何使用记忆系统
+
+1. **搜索**：`memory_search(query)` - 查找相关记忆
+2. **检索**：`memory_get(path, from_line, lines)` - 读取特定章节
+3. **保存长期**：`memory_add_long_term(content, tags, category)` - 保存长期记忆
+4. **保存短期**：`memory_add_daily(content, tags)` - 保存短期记忆
+
+---
+
+## 最佳实践
+
+### 🔍 搜索时
+- 使用具体的搜索关键词（不是"用户喜欢什么",而是"用户偏好 主题"）
+- 如果搜索结果置信度低,说明"我检查了记忆,但没找到相关信息"
+
+### 💾 保存时
+- **主动保存**：用户提到重要信息时,主动保存（不需要用户明确说"记住这个"）
+- **及时保存**：在对话过程中及时保存,不要等到对话结束
+- **合理标签**：使用描述性标签（如 "preference", "project", "decision"）
+- **引用来源**：如果信息来自用户的具体陈述,保存时包含上下文
+
+### 📌 分类时
+- **默认保守**：如果不确定是否需要长期保留,使用 `memory_add_daily()`
+- **宁滥勿缺**：长期记忆是精选的、结构化的信息,不要什么都保存进去
+- **用户主导**：如果用户明确说"记住这个"或"别忘了",通常是长期记忆
+
+### 📖 引用时
+- 引用格式：`path#Lstart-Lend`（如 `MEMORY.md#L10-L15`）
+- 始终验证引用来源的准确性
+
+---
+
+## 记忆文件格式
+
+### MEMORY.md（长期记忆）
+```markdown
+# 长期记忆
+
+## 用户偏好
+
+### [2026-02-07 14:23] 界面主题偏好
+**Tags:** #preference #ui
+
+用户明确表示喜欢使用深色主题的界面...
+
+---
+
+## 项目信息
+
+### [2026-02-07 10:30] 技术栈
+**Tags:** #project #tech-stack
+
+后端：Python 3.8+, FastAPI
+存储：SQLite, ChromaDB
+...
+
+---
+```
+
+### memory/DD-MM-YYYY.md（短期记忆）
+```markdown
+今天讨论了认证模块的实现方案,考虑使用 JWT 令牌。
+
+**Tags:** #discussion #auth
+
+---
+
+遇到 ChromaDB 连接超时错误,可能是网络问题。
+
+**Tags:** #debug #error
+```
+
+---
+
+## 总结
+
+**记住**：
+- 长期记忆 = 需要永久保留的结构化知识
+- 短期记忆 = 临时性、可能过期的上下文信息
+- 不确定时 → 默认使用短期记忆
+- 主动搜索、及时保存、合理标签
 """
 
 
@@ -47,30 +249,39 @@ def get_agent_instructions(tools_available: List[str]) -> str:
         return ""
 
     instructions = """
-## Memory System
+## 记忆系统
 
-You have access to a memory system with the following tools:
+你可以访问以下记忆系统工具:
 """
     for tool in tools_available:
         if tool == "memory_search":
-            instructions += "\n- `memory_search(query)`: Search memories for relevant information"
+            instructions += "\n- `memory_search(query)`: 搜索相关记忆"
+        elif tool == "memory_add_long_term":
+            instructions += "\n- `memory_add_long_term(content, tags, category)`: 添加长期记忆到 MEMORY.md"
+        elif tool == "memory_add_daily":
+            instructions += "\n- `memory_add_daily(content, tags)`: 添加短期记忆到今日文件"
         elif tool == "memory_add":
-            instructions += "\n- `memory_add(content, tags)`: Add new memory entries"
+            instructions += "\n- `memory_add(content, tags)`: 添加记忆（向后兼容,映射到短期记忆）"
         elif tool == "memory_get":
-            instructions += "\n- `memory_get(path, from, lines)`: Retrieve specific memory content"
+            instructions += "\n- `memory_get(path, from_line, lines)`: 检索特定记忆内容"
 
     instructions += """
 
-### When to Use Memory
+### 何时使用记忆
 
-Search memory before answering about:
-- Past work, decisions, or actions
-- User preferences or context
-- Project history or dates
-- Previously discussed topics
+在回答以下问题之前先搜索记忆:
+- 关于过去工作、决策或行动的问题
+- 关于用户偏好或上下文的问题
+- 关于项目历史或日期的问题
+- 关于之前讨论过的主题的问题
 
-### Citation Format
+### 长期 vs 短期记忆
 
-When referencing memories, use: `path#Lstart-Lend`
+- **长期记忆** (`memory_add_long_term`): 用户偏好、项目信息、重要决策、工作流程、联系人信息
+- **短期记忆** (`memory_add_daily`): 对话上下文、调试信息、每日活动、临时信息
+
+### 引用格式
+
+引用记忆时使用: `path#Lstart-Lend`
 """
     return instructions

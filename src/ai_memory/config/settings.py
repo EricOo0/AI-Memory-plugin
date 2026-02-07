@@ -11,7 +11,7 @@ class VectorStoreConfig(BaseModel):
     backend: str = Field(default="sqlite")  # sqlite, chroma
     chroma_persist_dir: Optional[Path] = Field(default=None)
     chroma_host: Optional[str] = Field(default=None)
-    chroma_port: Optional[int] = Field(default=None)
+    chroma_port: Optional[int] = Field(default=18432)  # 避免常用端口冲突（8000, 8080, 3000, 5000）
 
 
 class StorageConfig(BaseModel):
@@ -24,7 +24,7 @@ class StorageConfig(BaseModel):
 class EmbeddingConfig(BaseModel):
     """嵌入配置"""
     provider: str = Field(default="local")
-    model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2")
+    model: str = Field(default="BAAI/bge-large-zh-v1.5")  # 默认使用 BGE 中文模型
     dimensions: Optional[int] = None
 
 
