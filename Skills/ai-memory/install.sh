@@ -120,8 +120,7 @@ print("")
 model = SentenceTransformer(
     model_name,
     cache_folder=str(cache_dir.parent),
-    trust_remote_code=True,
-    model_kwargs={"normalize_embeddings": True}
+    trust_remote_code=True
 )
 
 # 保存模型
